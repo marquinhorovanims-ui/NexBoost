@@ -1,0 +1,61 @@
+========================================================
+  NexBoost — Como ativar o envio de e-mail (2FA real)
+========================================================
+
+O servidor (server.py) já tem todo o sistema de contas com verificação
+em duas etapas por e-mail. Para os códigos serem ENVIADOS DE VERDADE
+(em vez de aparecerem só no console), configure um servidor SMTP.
+
+--------------------------------------------------------
+1) INSTALAR E RODAR
+--------------------------------------------------------
+    pip install flask
+    python server.py
+
+O site (nexboost.html) deve ser servido pelo mesmo endereço do servidor
+para conversar com a API. Ao abrir o HTML direto (file://), ele cai no
+modo demonstração (código na tela).
+
+--------------------------------------------------------
+2) CONFIGURAR O E-MAIL (exemplo com Gmail)
+--------------------------------------------------------
+No Gmail, crie uma "Senha de app" (Conta Google > Segurança >
+Verificação em duas etapas > Senhas de app). NÃO use sua senha normal.
+
+Windows (cmd):
+    set SMTP_HOST=smtp.gmail.com
+    set SMTP_PORT=587
+    set SMTP_USER=seuemail@gmail.com
+    set SMTP_PASS=sua-senha-de-app
+    set SMTP_FROM=NexBoost <seuemail@gmail.com>
+    python server.py
+
+Linux/Mac:
+    export SMTP_HOST=smtp.gmail.com
+    export SMTP_PORT=587
+    export SMTP_USER=seuemail@gmail.com
+    export SMTP_PASS=sua-senha-de-app
+    export SMTP_FROM="NexBoost <seuemail@gmail.com>"
+    python server.py
+
+Outros provedores (Outlook, Zoho, SendGrid, Amazon SES, Mailgun...)
+funcionam da mesma forma: basta trocar HOST/PORT/USER/PASS.
+
+--------------------------------------------------------
+3) COMO FUNCIONA
+--------------------------------------------------------
+- Cadastro (POST /api/register): cria a conta (senha guardada com hash
+  PBKDF2, nunca em texto puro) e envia um código de 6 dígitos por e-mail.
+- Verificação (POST /api/verify): confirma o código (expira em 10 min).
+- Login (POST /api/login): só entra se o e-mail já foi verificado.
+- Reenvio (POST /api/resend): gera e envia um novo código.
+
+Sem SMTP configurado, o código é impresso no console do servidor e
+também devolvido ao site (campo dev_code) para você testar o fluxo.
+
+--------------------------------------------------------
+4) SEGURANÇA (produção)
+--------------------------------------------------------
+- Defina NEXBOOST_ADMIN_TOKEN com um valor forte (painel de licenças).
+- Rode atrás de HTTPS (use um proxy como nginx/Caddy).
+- O banco é o arquivo licenses.db (SQLite) na mesma pasta.
