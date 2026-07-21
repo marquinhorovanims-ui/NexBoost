@@ -18,12 +18,15 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import os
 import re
 import secrets
 import smtplib
 import sqlite3
 import ssl
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
@@ -34,13 +37,16 @@ from flask import (
     redirect,
     render_template_string,
     request,
+    send_from_directory,
     session,
     url_for,
 )
 
 from keygen import generate_key, is_valid, normalize
 
-DB_PATH = Path(__file__).with_name("licenses.db")
+DB_PATH = Path(os.environ.get(
+    "NEXBOOST_DB_PATH",
+    str(Path(__file__).with_name("licenses.db"))))
 ADMIN_TOKEN = os.environ.get("NEXBOOST_ADMIN_TOKEN", "admin123")
 
 # --- Configuração de e-mail (SMTP) -----------------------------------------
@@ -58,6 +64,18 @@ SMTP_USER = os.environ.get("SMTP_USER", "")
 SMTP_PASS = os.environ.get("SMTP_PASS", "")
 SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER or "NexBoost <no-reply@nexboost.app>")
 CODE_TTL_MIN = 10  # validade do código de verificação em minutos
+
+# --- Configuração do Pix (AbacatePay) --------------------------------------
+# Pegue seu token no painel da AbacatePay (Configurações > API) e defina:
+#   set ABACATE_TOKEN=abc_dev_xxxxxxxxxxxx      (Windows)
+#   export ABACATE_TOKEN=abc_dev_xxxxxxxxxxxx   (Linux/Mac)
+# O webhook secret é opcional, mas recomendado — configure no painel da
+# AbacatePay o mesmo valor e o endpoint  https://SEU_DOMINIO/webhook/abacate
+ABACATE_TOKEN = os.environ.get("ABACATE_TOKEN", "")
+ABACATE_WEBHOOK_SECRET = os.environ.get("ABACATE_WEBHOOK_SECRET", "")
+ABACATE_API = "https://api.abacatepay.com/v1"
+PRODUCT_PRICE_CENTS = int(os.environ.get("NEXBOOST_PRICE_CENTS", "9999"))  # R$ 99,99
+PRODUCT_NAME = "Key Vitalícia NexBoost"
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("NEXBOOST_FLASK_SECRET",
@@ -87,6 +105,13 @@ def db() -> sqlite3.Connection:
         "code TEXT DEFAULT '',"
         "code_expires TEXT DEFAULT '',"
         "license TEXT DEFAULT '',"
+        "created_at TEXT NOT NULL)")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS payments ("
+        "billing_id TEXT PRIMARY KEY,"   # id da cobrança na AbacatePay
+        "email TEXT NOT NULL,"
+        "status TEXT DEFAULT 'PENDING',"  # PENDING | PAID | EXPIRED
+        "license TEXT DEFAULT '',"        # chave emitida após pagamento
         "created_at TEXT NOT NULL)")
     return conn
 
@@ -338,6 +363,193 @@ def api_login():
 
 
 # ---------------------------------------------------------------------------
+# Pagamento Pix (AbacatePay)
+# ---------------------------------------------------------------------------
+def _abacate_request(method: str, path: str, payload: dict | None = None):
+    """Chama a API da AbacatePay. Retorna (status_code, dict)."""
+    url = ABACATE_API + path
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("Authorization", f"Bearer {ABACATE_TOKEN}")
+    req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.status, json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        try:
+            body = json.loads(exc.read().decode())
+        except Exception:  # noqa: BLE001
+            body = {"error": str(exc)}
+        return exc.code, body
+    except Exception as exc:  # noqa: BLE001
+        return 0, {"error": str(exc)}
+
+
+@app.post("/api/pix/create")
+def api_pix_create():
+    """Cria uma cobrança Pix e devolve o QR code para o site exibir.
+
+    O site chama isto quando o cliente escolhe Pix. A chave só é emitida
+    depois, quando a AbacatePay confirmar o pagamento via webhook.
+    """
+    if not ABACATE_TOKEN:
+        return jsonify(ok=False,
+                       error="Pix não configurado no servidor."), 503
+    data = request.get_json(silent=True) or {}
+    email = str(data.get("email", "")).strip().lower()
+    name = str(data.get("name", "")).strip() or "Cliente NexBoost"
+    if not valid_email(email):
+        return jsonify(ok=False, error="E-mail inválido."), 400
+
+    payload = {
+        "frequency": "ONE_TIME",
+        "methods": ["PIX"],
+        "products": [{
+            "externalId": "nexboost-vitalicia",
+            "name": PRODUCT_NAME,
+            "quantity": 1,
+            "price": PRODUCT_PRICE_CENTS,
+        }],
+        "customer": {"email": email, "name": name},
+        # Ajuste returnUrl/completionUrl para o seu domínio real:
+        "returnUrl": request.host_url.rstrip("/") + "/",
+        "completionUrl": request.host_url.rstrip("/") + "/",
+    }
+    status, body = _abacate_request("POST", "/pixQrCode/create", payload)
+    if status not in (200, 201) or not isinstance(body, dict):
+        return jsonify(ok=False,
+                       error="Falha ao criar cobrança Pix.",
+                       detail=body), 502
+    # A AbacatePay retorna os dados dentro de "data".
+    d = body.get("data", body)
+    billing_id = str(d.get("id", ""))
+    if not billing_id:
+        return jsonify(ok=False, error="Resposta inesperada do gateway.",
+                       detail=body), 502
+    conn = db()
+    conn.execute(
+        "INSERT OR REPLACE INTO payments(billing_id,email,status,created_at) "
+        "VALUES(?,?,?,?)", (billing_id, email, "PENDING", now()))
+    conn.commit()
+    conn.close()
+    return jsonify(
+        ok=True,
+        billing_id=billing_id,
+        qr_image=d.get("brCodeBase64", ""),   # imagem do QR (base64)
+        qr_code=d.get("brCode", ""),           # copia-e-cola
+        amount=PRODUCT_PRICE_CENTS,
+    )
+
+
+@app.get("/api/pix/status")
+def api_pix_status():
+    """O site consulta este endpoint para saber se o Pix já foi pago.
+
+    Retorna a chave assim que o pagamento é confirmado (pelo webhook, ou
+    por checagem direta na AbacatePay como reforço).
+    """
+    billing_id = str(request.args.get("billing_id", ""))
+    if not billing_id:
+        return jsonify(ok=False, error="billing_id ausente."), 400
+    conn = db()
+    row = conn.execute(
+        "SELECT email, status, license FROM payments WHERE billing_id=?",
+        (billing_id,)).fetchone()
+    if row is None:
+        conn.close()
+        return jsonify(ok=False, error="Cobrança não encontrada."), 404
+    status = row["status"]
+    license_key = row["license"]
+    # Reforço: se ainda pendente, checa direto na AbacatePay.
+    if status != "PAID" and ABACATE_TOKEN:
+        code, body = _abacate_request(
+            "GET", f"/pixQrCode/check?id={billing_id}")
+        d = body.get("data", body) if isinstance(body, dict) else {}
+        if code == 200 and str(d.get("status", "")).upper() == "PAID":
+            license_key = _fulfill_payment(conn, billing_id, row["email"])
+            status = "PAID"
+    conn.close()
+    return jsonify(ok=True, status=status, license=license_key or "")
+
+
+def _fulfill_payment(conn, billing_id: str, email: str) -> str:
+    """Emite a chave para um pagamento confirmado (idempotente)."""
+    row = conn.execute(
+        "SELECT license FROM payments WHERE billing_id=?",
+        (billing_id,)).fetchone()
+    if row and row["license"]:
+        return row["license"]  # já emitida — não gera duas vezes
+    key = generate_key()
+    conn.execute(
+        "INSERT OR IGNORE INTO licenses(key,created_at,note) VALUES(?,?,?)",
+        (key, now(), f"Pix {billing_id} — {email}"))
+    conn.execute(
+        "UPDATE payments SET status='PAID', license=? WHERE billing_id=?",
+        (key, billing_id))
+    # Vincula à conta, se existir.
+    conn.execute(
+        "UPDATE accounts SET license=? WHERE email=? AND "
+        "(license IS NULL OR license='')", (key, email))
+    conn.commit()
+    # Envia a chave por e-mail, se o SMTP estiver configurado.
+    try:
+        _send_license_email(email, key)
+    except Exception:  # noqa: BLE001 - e-mail nunca derruba a emissão
+        pass
+    return key
+
+
+@app.post("/webhook/abacate")
+def webhook_abacate():
+    """Recebe a confirmação de pagamento da AbacatePay.
+
+    Configure este endpoint no painel da AbacatePay. Quando o Pix é pago,
+    a chave é emitida automaticamente — este é o caminho seguro (o site
+    não pode forjar uma confirmação).
+    """
+    # Validação simples por segredo compartilhado no query string.
+    if ABACATE_WEBHOOK_SECRET:
+        if request.args.get("secret", "") != ABACATE_WEBHOOK_SECRET:
+            return jsonify(ok=False, error="Não autorizado."), 401
+    data = request.get_json(silent=True) or {}
+    event = str(data.get("event", ""))
+    payload = data.get("data", {}) or {}
+    billing = payload.get("pixQrCode", payload.get("billing", payload)) or {}
+    billing_id = str(billing.get("id", ""))
+    status = str(billing.get("status", "")).upper()
+    if event in ("billing.paid", "pix.paid") or status == "PAID":
+        if billing_id:
+            conn = db()
+            row = conn.execute(
+                "SELECT email FROM payments WHERE billing_id=?",
+                (billing_id,)).fetchone()
+            if row is not None:
+                _fulfill_payment(conn, billing_id, row["email"])
+            conn.close()
+    return jsonify(ok=True)
+
+
+def _send_license_email(to_email: str, key: str) -> None:
+    """Envia a chave comprada por e-mail (usa o mesmo SMTP do 2FA)."""
+    if not SMTP_HOST:
+        print(f"[DEV] Chave para {to_email}: {key}")
+        return
+    msg = EmailMessage()
+    msg["Subject"] = "Sua chave NexBoost"
+    msg["From"] = SMTP_FROM
+    msg["To"] = to_email
+    msg.set_content(
+        f"Obrigado pela compra!\n\nSua chave NexBoost é: {key}\n\n"
+        "Abra o aplicativo e insira a chave para ativar.\n\n— Equipe NexBoost")
+    context = ssl.create_default_context()
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server.starttls(context=context)
+        if SMTP_USER:
+            server.login(SMTP_USER, SMTP_PASS)
+        server.send_message(msg)
+
+
+# ---------------------------------------------------------------------------
 # Painel administrativo
 # ---------------------------------------------------------------------------
 PAGE = """
@@ -449,6 +661,16 @@ def authed() -> bool:
 
 
 @app.get("/")
+def site_home():
+    """Serve o site de vendas (nexboost.html) na raiz.
+
+    Assim o JavaScript do site conversa com a API na mesma origem
+    (contas, 2FA e Pix funcionam de verdade).
+    """
+    return send_from_directory(Path(__file__).parent, "nexboost.html")
+
+
+@app.get("/admin")
 def index():
     rows = []
     if authed():
@@ -509,6 +731,7 @@ def revoke():
 
 
 if __name__ == "__main__":
-    print(f"Painel: http://localhost:8090  (token: "
+    port = int(os.environ.get("PORT", "8090"))
+    print(f"NexBoost server rodando na porta {port}  (token: "
           f"{'definido via NEXBOOST_ADMIN_TOKEN' if 'NEXBOOST_ADMIN_TOKEN' in os.environ else 'admin123 — TROQUE!'})")
-    app.run(host="0.0.0.0", port=8090)
+    app.run(host="0.0.0.0", port=port)
