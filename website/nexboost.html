@@ -50,6 +50,19 @@ letter-spacing:-.4px}
 overflow:hidden}
 .brand .mark svg{width:15px;height:15px}
 .brand .mark img{display:block}
+.stripe-tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;
+background:#635BFF;color:#fff;vertical-align:middle;margin-left:4px;letter-spacing:.3px}
+.pix-tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;
+background:#00B87C;color:#fff;vertical-align:middle;margin-left:4px;letter-spacing:.3px}
+.pix-box{display:flex;gap:20px;align-items:center;margin-top:18px;padding:18px;
+background:var(--card2);border:1px solid var(--line);border-radius:14px}
+.pix-qr{width:150px;height:150px;border-radius:10px;background:#fff;padding:8px;flex-shrink:0}
+.pix-copy-wrap{flex:1;min-width:0}
+.pix-copy-label{font-size:11px;letter-spacing:1px;color:var(--faint);text-transform:uppercase;margin-bottom:6px}
+.pix-code{font-family:Consolas,monospace;font-size:11px;word-break:break-all;color:var(--muted);
+background:var(--bg);padding:10px;border-radius:8px;max-height:70px;overflow:auto;line-height:1.4}
+.pix-status{text-align:center;font-size:13px;color:var(--muted);margin-top:14px}
+@media(max-width:560px){.pix-box{flex-direction:column}.pix-qr{width:180px;height:180px}}
 .navlinks{display:flex;gap:4px;margin-left:20px}
 .navlinks a{color:var(--muted);font-size:14px;font-weight:500;padding:8px 14px;
 border-radius:9px;transition:.2s}
@@ -243,8 +256,7 @@ filter:blur(50px);pointer-events:none}
 .sp-badge{display:inline-block;font-family:var(--display);font-size:11px;font-weight:600;
 letter-spacing:2px;color:var(--blue2);background:rgba(59,130,246,.12);
 border:1px solid rgba(59,130,246,.25);padding:7px 16px;border-radius:999px;margin-bottom:26px}
-.sp-grid{display:grid;grid-template-columns:1fr 1px 1fr;gap:36px;align-items:center}
-.sp-grid::before{content:'';grid-column:2;height:100%;background:var(--line)}
+.sp-grid{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center}
 .sp-name{font-family:var(--display);font-size:26px;font-weight:600;letter-spacing:-.6px;
 margin-bottom:12px}
 .sp-desc{font-size:14px;color:var(--muted);line-height:1.6;margin-bottom:24px}
@@ -257,16 +269,17 @@ margin-bottom:12px}
 .sp-secure{text-align:center;font-size:12px;color:var(--faint);margin-top:14px}
 .sp-feat-title{font-family:var(--display);font-size:13px;font-weight:600;letter-spacing:1px;
 text-transform:uppercase;color:var(--faint);margin-bottom:16px}
-.sp-feats{list-style:none}
+.sp-feats{list-style:none;margin-top:20px}
 .sp-feats li{display:flex;gap:11px;padding:8px 0;font-size:14px;color:var(--text);line-height:1.4}
 .sp-feats li svg{flex-shrink:0;width:17px;height:17px;margin-top:2px;color:var(--green)}
-.sp-right{display:flex;align-items:center;justify-content:center}
-.sp-box{max-width:100%;max-height:420px;width:auto;filter:drop-shadow(0 40px 60px rgba(0,0,0,.5))
-drop-shadow(0 0 40px rgba(59,130,246,.15));transition:transform .4s var(--ease)}
+.sp-right{display:flex;align-items:center;justify-content:center;order:-1}
+.sp-box{display:block;width:100%;max-width:300px;height:auto;
+filter:drop-shadow(0 30px 50px rgba(0,0,0,.5)) drop-shadow(0 0 40px rgba(59,130,246,.12));
+transition:transform .4s var(--ease)}
 .sp-box:hover{transform:translateY(-8px) rotate(-1deg)}
 @media(max-width:720px){.single-plan{padding:30px}
-.sp-grid{grid-template-columns:1fr;gap:26px}.sp-grid::before{display:none}
-.sp-right{order:-1}.sp-box{max-height:300px}}
+.sp-grid{grid-template-columns:1fr;gap:26px}
+.sp-box{max-width:220px}}
 
 /* ---------- SINGLE PLAN END ---------- */
 radial-gradient(ellipse 80% 50% at 50% 0%,rgba(139,157,255,.08),transparent 70%)}
@@ -919,15 +932,28 @@ Comprar agora</button>
 <div id="co2" style="display:none">
 <h2>Pagamento</h2><div class="sub">Escolha a forma de pagamento.</div>
 <div class="pay-methods">
-<div class="paym sel" onclick="selPay(this)"><div class="radio"></div><span class="ico">⚡</span><div><div style="font-weight:600;font-size:14px">Pix</div><div style="font-size:12px;color:var(--faint)">Aprovação imediata</div></div></div>
-<div class="paym" onclick="selPay(this)"><div class="radio"></div><span class="ico">💳</span><div><div style="font-weight:600;font-size:14px">Cartão de crédito</div><div style="font-size:12px;color:var(--faint)">Em até 12x</div></div></div>
-<div class="paym" onclick="selPay(this)"><div class="radio"></div><span class="ico">📄</span><div><div style="font-weight:600;font-size:14px">Boleto</div><div style="font-size:12px;color:var(--faint)">Compensa em 1-2 dias</div></div></div>
+<div class="paym sel" data-method="pix" onclick="selPay(this)"><div class="radio"></div><span class="ico">⚡</span><div><div style="font-weight:600;font-size:14px">Pix <span class="pix-tag">instantâneo</span></div><div style="font-size:12px;color:var(--faint)">Aprovação na hora · via AbacatePay</div></div></div>
+<div class="paym" data-method="stripe" onclick="selPay(this)"><div class="radio"></div><span class="ico">💳</span><div><div style="font-weight:600;font-size:14px">Cartão de crédito <span class="stripe-tag">Stripe</span></div><div style="font-size:12px;color:var(--faint)">Pagamento seguro · processado pela Stripe</div></div></div>
 </div>
-<div class="summary"><div class="sline tot"><span>Total a pagar</span><span class="co-total">R$ 49,90</span></div></div>
+<div class="summary"><div class="sline tot"><span>Total a pagar</span><span class="co-total">R$ 99,99</span></div></div>
+
+<!-- Área do QR Pix (aparece após gerar a cobrança) -->
+<div id="pixArea" style="display:none">
+<div class="pix-box">
+<img id="pixQrImg" alt="QR Code Pix" class="pix-qr">
+<div class="pix-copy-wrap">
+<div class="pix-copy-label">Pix copia e cola</div>
+<div id="pixCode" class="pix-code"></div>
+<button class="btn btn-line" style="width:100%;margin-top:8px;justify-content:center" onclick="copyPixCode()">Copiar código</button>
+</div>
+</div>
+<div id="pixStatus" class="pix-status">⏳ Aguardando pagamento…</div>
+</div>
+
 <div class="fmsg" id="payErr" style="text-align:center"></div>
-<button class="btn btn-primary btn-lg" id="payBtn" style="width:100%;margin-top:16px;justify-content:center" onclick="processPay()">Confirmar pagamento</button>
+<button class="btn btn-primary btn-lg" id="payBtn" style="width:100%;margin-top:16px;justify-content:center" onclick="processPay()">Gerar Pix</button>
 <button class="btn btn-ghost" style="width:100%;margin-top:10px;justify-content:center" onclick="coBack()">Voltar</button>
-<p style="text-align:center;font-size:12px;color:var(--faint);margin-top:14px">🔒 Demonstração — nenhum valor é cobrado. Plugue seu gateway em processPay().</p>
+<p id="payHint" style="text-align:center;font-size:12px;color:var(--faint);margin-top:14px">🔒 Pagamento seguro. Sua chave é liberada automaticamente após a confirmação.</p>
 </div>
 
 <div id="co3" style="display:none">
@@ -1098,7 +1124,7 @@ for(var ch of a+b+c)if(ALPHA.indexOf(ch)<0)return false;return checksum(a+'-'+b)
 /* ==================== State ==================== */
 var PLAN={name:'Key Vitalicia NexBoost',price:99.99,
 desc:'Licenca vitalicia | Todos os recursos | Atualizacoes 1.x',icon:'\ud83d\udd11'};
-var cart=null, payMethod='Pix';
+var cart=null, payMethod='pix';
 function fmt(v){return 'R$ '+v.toFixed(2).replace('.',',')}
 function toast(msg){var t=document.getElementById('toast');document.getElementById('toastMsg').textContent=msg;
 t.classList.add('show');clearTimeout(window._tt);window._tt=setTimeout(function(){t.classList.remove('show')},3000)}
@@ -1172,27 +1198,76 @@ if(!validEmail(email)){fe.classList.add('err');fe.querySelector('.fmsg').textCon
 
 if(!ok)return;
 document.getElementById('co1').style.display='none';document.getElementById('co2').style.display='block'}
-function coBack(){document.getElementById('co2').style.display='none';document.getElementById('co1').style.display='block'}
+function coBack(){document.getElementById('co2').style.display='none';document.getElementById('co1').style.display='block';
+stopPixPolling();document.getElementById('pixArea').style.display='none'}
 function selPay(el){document.querySelectorAll('.paym').forEach(function(p){p.classList.remove('sel')});
-el.classList.add('sel');payMethod=el.querySelector('div div').textContent}
-var processing=false;
-function processPay(){if(processing)return;processing=true;
-document.getElementById('payBtn').disabled=true;
-document.getElementById('co2').style.display='none';document.getElementById('co3').style.display='block';setPStep(3);
-document.getElementById('coProcessing').style.display='block';
-document.getElementById('coSuccess').style.display='none';
-var msgs=['Conectando ao provedor','Validando pagamento','Confirmando transação','Emitindo licença'];
-var i=0;var t=setInterval(function(){
-document.getElementById('procMsg').textContent=msgs[Math.min(i,msgs.length-1)];i++;
-if(i>msgs.length){clearInterval(t);
-/* >>> Chave gerada SÓ após "confirmação" do pagamento <<< */
-var key=generateKey();var email=document.getElementById('ckEmail').value.trim().toLowerCase();
+el.classList.add('sel');payMethod=el.getAttribute('data-method')||'pix';
+var hint=document.getElementById('payHint');var btn=document.getElementById('payBtn');
+document.getElementById('pixArea').style.display='none';stopPixPolling();
+document.getElementById('payErr').textContent='';
+if(payMethod==='stripe'){hint.innerHTML='🔒 Você será levado ao ambiente seguro da Stripe para concluir o pagamento.';
+btn.textContent='Pagar com Stripe';btn.style.display='';}
+else{hint.innerHTML='🔒 Pagamento seguro. Sua chave é liberada automaticamente após a confirmação.';
+btn.textContent='Gerar Pix';btn.style.display='';}}
+
+/* Link de pagamento Stripe (cartão). Troque pelo de produção quando sair do teste. */
+var STRIPE_PAYMENT_LINK='https://buy.stripe.com/test_eVqeVd2xleXfeCt1hNf7i00';
+var processing=false, pixPoll=null, pixBillingId=null;
+
+function processPay(){if(processing)return;
+var email=document.getElementById('ckEmail').value.trim().toLowerCase();
+if(payMethod==='stripe'){
+var url=STRIPE_PAYMENT_LINK+(email?('?prefilled_email='+encodeURIComponent(email)):'');
+window.open(url,'_blank');
+document.getElementById('payErr').innerHTML='<span style="color:var(--muted)">Abrimos o pagamento seguro da Stripe em uma nova aba.</span>';
+return;}
+/* ---- PIX ---- */
+if(payMethod==='pix'){
+if(!USE_BACKEND){
+document.getElementById('payErr').innerHTML='<span style="color:var(--amber)">O Pix real funciona quando o site é servido pelo servidor (server.py) com a AbacatePay configurada. Você está abrindo o arquivo direto.</span>';
+return;}
+var name=document.getElementById('ckName').value.trim()||'Cliente';
+var btn=document.getElementById('payBtn');btn.disabled=true;btn.textContent='Gerando Pix…';
+apiPost('/api/pix/create',{email:email,name:name}).then(function(res){
+btn.disabled=false;btn.textContent='Gerar Pix';
+if(!res.data.ok){document.getElementById('payErr').textContent=res.data.error||'Falha ao gerar Pix.';return;}
+pixBillingId=res.data.billing_id;
+var img=document.getElementById('pixQrImg');
+img.src=res.data.qr_image?('data:image/png;base64,'+res.data.qr_image):'';
+document.getElementById('pixCode').textContent=res.data.qr_code||'';
+document.getElementById('pixArea').style.display='block';
+document.getElementById('pixStatus').innerHTML='⏳ Aguardando pagamento…';
+btn.style.display='none';
+startPixPolling();
+}).catch(function(){btn.disabled=false;btn.textContent='Gerar Pix';
+document.getElementById('payErr').textContent='Erro de conexão com o servidor.';});
+return;}}
+
+function startPixPolling(){
+stopPixPolling();
+pixPoll=setInterval(function(){
+if(!pixBillingId)return;
+fetch(API_BASE+'/api/pix/status?billing_id='+encodeURIComponent(pixBillingId))
+.then(function(r){return r.json()}).then(function(d){
+if(d&&d.status==='PAID'&&d.license){
+stopPixPolling();
+pixPaid(d.license);}
+}).catch(function(){});
+},4000);}
+function stopPixPolling(){if(pixPoll){clearInterval(pixPoll);pixPoll=null}}
+
+function pixPaid(key){
+var email=document.getElementById('ckEmail').value.trim().toLowerCase();
 if(session&&accounts[session])accounts[session].license=key;
-document.getElementById('finalKey').textContent=key;
-document.getElementById('mailNote').innerHTML='Enviada para <b>'+email+'</b> · <a style="color:var(--blue2)" href="mailto:'+email+'?subject=Sua%20licenca%20NexBoost&body=Sua%20chave:%20'+key+'">reenviar</a>';
+document.getElementById('co2').style.display='none';
+document.getElementById('co3').style.display='block';setPStep(3);
 document.getElementById('coProcessing').style.display='none';
 document.getElementById('coSuccess').style.display='block';
-processing=false;document.getElementById('payBtn').disabled=false}},650)}
+document.getElementById('finalKey').textContent=key;
+document.getElementById('mailNote').innerHTML='Enviada para <b>'+email+'</b>';}
+
+function copyPixCode(){var code=document.getElementById('pixCode').textContent;
+if(!code)return;navigator.clipboard.writeText(code).then(function(){toast('Código Pix copiado!')});}
 function finishCheckout(){cart=null;updateCart();closeSheet('checkoutSheet');toast('Compra concluida!');
 if(session)renderDashboard()}
 
